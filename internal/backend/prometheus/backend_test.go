@@ -2,14 +2,14 @@ package prometheus
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	v1alpha1 "github.com/acabrera02/slo-operator/api/v1alpha1"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestBuildRulesYAML_Availability(t *testing.T) {
+func TestReconcile_Availability(t *testing.T) {
 	b := &PrometheusBackend{}
 
 	slo := &v1alpha1.ServiceLevelObjective{
@@ -43,13 +43,17 @@ func TestBuildRulesYAML_Availability(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
 
-	// Call mutate to populate configmap data
-	if err := results[0].MutateFunc(); err != nil {
-		t.Fatalf("mutate error: %v", err)
+	rule, ok := results[0].Object.(*monitoringv1.PrometheusRule)
+	if !ok {
+		t.Fatal("expected PrometheusRule object")
+	}
+
+	if rule.Name != "slo-test-slo" {
+		t.Errorf("unexpected name: %s", rule.Name)
 	}
 }
 
-func TestBuildRulesYAML_ContainsBurnRateAlerts(t *testing.T) {
+func TestBuildSpec_ContainsBurnRateAlerts(t *testing.T) {
 	b := &PrometheusBackend{}
 
 	slo := &v1alpha1.ServiceLevelObjective{
@@ -74,28 +78,51 @@ func TestBuildRulesYAML_ContainsBurnRateAlerts(t *testing.T) {
 		},
 	}
 
-	yaml, err := b.buildRulesYAML(slo, 99.9)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	spec := b.buildSpec(slo, 99.9)
+
+	if len(spec.Groups) != 2 {
+		t.Fatalf("expected 2 rule groups (recording + alerts), got %d", len(spec.Groups))
 	}
 
-	checks := []string{
-		"SLOBurnRateHigh",
-		"severity: critical",
-		"severity: warning",
-		"slo:error_ratio:rate",
-		"slo_name: myservice-availability",
-		"service: myservice",
+	recordingGroup := spec.Groups[0]
+	if recordingGroup.Name != "slo-myservice-availability-recording" {
+		t.Errorf("unexpected recording group name: %s", recordingGroup.Name)
+	}
+	if len(recordingGroup.Rules) == 0 {
+		t.Error("expected recording rules")
 	}
 
-	for _, check := range checks {
-		if !strings.Contains(yaml, check) {
-			t.Errorf("generated YAML missing %q", check)
+	alertGroup := spec.Groups[1]
+	if alertGroup.Name != "slo-myservice-availability-alerts" {
+		t.Errorf("unexpected alert group name: %s", alertGroup.Name)
+	}
+	if len(alertGroup.Rules) != 4 {
+		t.Errorf("expected 4 alert rules (multi-burn-rate), got %d", len(alertGroup.Rules))
+	}
+
+	// Check severities
+	critCount := 0
+	warnCount := 0
+	for _, rule := range alertGroup.Rules {
+		if rule.Alert != "SLOBurnRateHigh" {
+			t.Errorf("unexpected alert name: %s", rule.Alert)
 		}
+		switch rule.Labels["severity"] {
+		case "critical":
+			critCount++
+		case "warning":
+			warnCount++
+		}
+	}
+	if critCount != 2 {
+		t.Errorf("expected 2 critical alerts, got %d", critCount)
+	}
+	if warnCount != 2 {
+		t.Errorf("expected 2 warning alerts, got %d", warnCount)
 	}
 }
 
-func TestBuildRulesYAML_AlertsDisabled(t *testing.T) {
+func TestBuildSpec_AlertsDisabled(t *testing.T) {
 	b := &PrometheusBackend{}
 
 	slo := &v1alpha1.ServiceLevelObjective{
@@ -123,16 +150,13 @@ func TestBuildRulesYAML_AlertsDisabled(t *testing.T) {
 		},
 	}
 
-	yaml, err := b.buildRulesYAML(slo, 99.9)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	spec := b.buildSpec(slo, 99.9)
+
+	if len(spec.Groups) != 1 {
+		t.Fatalf("expected 1 rule group (recording only), got %d", len(spec.Groups))
 	}
 
-	if strings.Contains(yaml, "SLOBurnRateHigh") {
-		t.Error("expected no alerts when alerting is disabled")
-	}
-
-	if !strings.Contains(yaml, "slo:error_ratio:rate") {
-		t.Error("recording rules should still be generated even when alerts disabled")
+	if spec.Groups[0].Name != "slo-myservice-availability-recording" {
+		t.Errorf("unexpected group name: %s", spec.Groups[0].Name)
 	}
 }

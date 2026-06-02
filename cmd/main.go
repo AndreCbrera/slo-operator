@@ -35,6 +35,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+
 	slov1alpha1 "github.com/acabrera02/slo-operator/api/v1alpha1"
 	"github.com/acabrera02/slo-operator/internal/backend"
 	"github.com/acabrera02/slo-operator/internal/backend/grafana"
@@ -50,7 +52,7 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
+	utilruntime.Must(monitoringv1.AddToScheme(scheme))
 	utilruntime.Must(slov1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
@@ -195,6 +197,16 @@ func main() {
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
+
+	// Register validating webhook (requires cert-manager or manual TLS setup)
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err := ctrl.NewWebhookManagedBy(mgr, &slov1alpha1.ServiceLevelObjective{}).
+			WithValidator(&slov1alpha1.ServiceLevelObjectiveValidator{}).
+			Complete(); err != nil {
+			setupLog.Error(err, "Failed to create webhook")
+			os.Exit(1)
+		}
+	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "Failed to set up health check")

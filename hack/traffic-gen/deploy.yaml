@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traffic-gen
+  namespace: default
+  labels:
+    app: traffic-gen
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traffic-gen
+  template:
+    metadata:
+      labels:
+        app: traffic-gen
+    spec:
+      containers:
+        - name: traffic-gen
+          image: traffic-gen:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+              name: metrics
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: traffic-gen
+  namespace: default
+  labels:
+    app: traffic-gen
+spec:
+  selector:
+    app: traffic-gen
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: traffic-gen
+  namespace: default
+  labels:
+    app: traffic-gen
+spec:
+  selector:
+    matchLabels:
+      app: traffic-gen
+  endpoints:
+    - port: metrics
+      interval: 10s
+      honorLabels: true

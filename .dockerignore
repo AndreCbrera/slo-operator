@@ -9,3 +9,7 @@
 # Re-include Go module files
 !go.mod
 !go.sum
+
+# Re-include pre-compiled binary for local builds
+!bin/manager
+!bin/traffic-gen

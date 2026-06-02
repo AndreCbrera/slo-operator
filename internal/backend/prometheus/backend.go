@@ -8,8 +8,9 @@ import (
 	v1alpha1 "github.com/acabrera02/slo-operator/api/v1alpha1"
 	"github.com/acabrera02/slo-operator/internal/backend"
 	"github.com/acabrera02/slo-operator/internal/slo"
-	corev1 "k8s.io/api/core/v1"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -31,106 +32,114 @@ func (p *PrometheusBackend) Reconcile(ctx context.Context, obj *v1alpha1.Service
 		return nil, err
 	}
 
-	rulesYAML, err := p.buildRulesYAML(obj, target)
-	if err != nil {
-		return nil, fmt.Errorf("building prometheus rules: %w", err)
-	}
-
-	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("slo-%s-rules", obj.Name),
-			Namespace: obj.Namespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "slo-operator",
-				"prometheus":                   "rules",
-				"slo.sre.io/name":              obj.Name,
-			},
-		},
-	}
+	rule := p.buildPrometheusRule(obj, target)
 
 	mutate := func() error {
-		cm.Data = map[string]string{
-			fmt.Sprintf("slo-%s.yaml", obj.Name): rulesYAML,
-		}
+		rule.Spec = p.buildSpec(obj, target)
 		return nil
 	}
 
-	return []backend.Result{{Object: cm, MutateFunc: mutate}}, nil
+	return []backend.Result{{Object: rule, MutateFunc: mutate}}, nil
 }
 
 func (p *PrometheusBackend) Cleanup(ctx context.Context, obj *v1alpha1.ServiceLevelObjective) error {
-	cm := &corev1.ConfigMap{
+	rule := &monitoringv1.PrometheusRule{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("slo-%s-rules", obj.Name),
+			Name:      fmt.Sprintf("slo-%s", obj.Name),
 			Namespace: obj.Namespace,
 		},
 	}
-	return client.IgnoreNotFound(p.client.Delete(ctx, cm))
+	return client.IgnoreNotFound(p.client.Delete(ctx, rule))
 }
 
-func (p *PrometheusBackend) buildRulesYAML(obj *v1alpha1.ServiceLevelObjective, target float64) (string, error) {
+func (p *PrometheusBackend) buildPrometheusRule(obj *v1alpha1.ServiceLevelObjective, target float64) *monitoringv1.PrometheusRule {
+	return &monitoringv1.PrometheusRule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("slo-%s", obj.Name),
+			Namespace: obj.Namespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by": "slo-operator",
+				"slo.sre.io/name":              obj.Name,
+			},
+		},
+		Spec: p.buildSpec(obj, target),
+	}
+}
+
+func (p *PrometheusBackend) buildSpec(obj *v1alpha1.ServiceLevelObjective, target float64) monitoringv1.PrometheusRuleSpec {
 	maxError := slo.MaxErrorRate(target)
 	windows := slo.BurnRateWindowsForSLO(obj.Spec.Window)
-
 	sloName := fmt.Sprintf("%s-%s", obj.Spec.Service, string(obj.Spec.SLI.Type))
 	errorExpr, totalExpr := p.getQueryExprs(obj)
 
-	var sb strings.Builder
-	sb.WriteString("groups:\n")
+	var groups []monitoringv1.RuleGroup
 
-	// Recording rules group
-	sb.WriteString(fmt.Sprintf("  - name: slo-%s-recording\n", sloName))
-	sb.WriteString("    rules:\n")
-
+	// Recording rules
+	var recordingRules []monitoringv1.Rule
 	uniqueWindows := collectUniqueWindowDurations(windows)
 	for _, wStr := range uniqueWindows {
-		sb.WriteString(fmt.Sprintf("      - record: slo:error_ratio:rate%s\n", wStr))
-		sb.WriteString(fmt.Sprintf("        expr: |\n          (%s) / (%s)\n", substituteWindow(errorExpr, wStr), substituteWindow(totalExpr, wStr)))
-		sb.WriteString(fmt.Sprintf("        labels:\n          slo_name: %s\n", sloName))
+		recordingRules = append(recordingRules, monitoringv1.Rule{
+			Record: fmt.Sprintf("slo:error_ratio:rate%s", wStr),
+			Expr:   intstr.FromString(fmt.Sprintf("(%s) / (%s)", substituteWindow(errorExpr, wStr), substituteWindow(totalExpr, wStr))),
+			Labels: map[string]string{"slo_name": sloName},
+		})
 	}
+	groups = append(groups, monitoringv1.RuleGroup{
+		Name:  fmt.Sprintf("slo-%s-recording", sloName),
+		Rules: recordingRules,
+	})
 
-	// Alert rules group
-	if obj.Spec.Alerting != nil && obj.Spec.Alerting.Disabled {
-		return sb.String(), nil
-	}
+	// Alert rules
+	if obj.Spec.Alerting == nil || !obj.Spec.Alerting.Disabled {
+		var alertRules []monitoringv1.Rule
+		for _, bw := range windows {
+			longStr := slo.FormatDuration(bw.LongWindow)
+			shortStr := slo.FormatDuration(bw.ShortWindow)
+			threshold := fmt.Sprintf("%.6f", bw.BurnRate*maxError)
+			forDuration := monitoringv1.Duration(slo.FormatDuration(bw.For))
 
-	sb.WriteString(fmt.Sprintf("  - name: slo-%s-alerts\n", sloName))
-	sb.WriteString("    rules:\n")
+			expr := fmt.Sprintf(
+				`slo:error_ratio:rate%s{slo_name="%s"} > %s and slo:error_ratio:rate%s{slo_name="%s"} > %s`,
+				longStr, sloName, threshold,
+				shortStr, sloName, threshold,
+			)
 
-	for _, bw := range windows {
-		longStr := slo.FormatDuration(bw.LongWindow)
-		shortStr := slo.FormatDuration(bw.ShortWindow)
-		threshold := fmt.Sprintf("%.6f", bw.BurnRate*maxError)
-		forStr := slo.FormatDuration(bw.For)
-
-		sb.WriteString("      - alert: SLOBurnRateHigh\n")
-		sb.WriteString(fmt.Sprintf("        expr: |\n          slo:error_ratio:rate%s{slo_name=\"%s\"} > %s\n          and\n          slo:error_ratio:rate%s{slo_name=\"%s\"} > %s\n",
-			longStr, sloName, threshold,
-			shortStr, sloName, threshold))
-		sb.WriteString(fmt.Sprintf("        for: %s\n", forStr))
-		sb.WriteString("        labels:\n")
-		sb.WriteString(fmt.Sprintf("          severity: %s\n", bw.Severity))
-		sb.WriteString(fmt.Sprintf("          slo_name: %s\n", sloName))
-		sb.WriteString(fmt.Sprintf("          service: %s\n", obj.Spec.Service))
-
-		if obj.Spec.Alerting != nil {
-			for k, v := range obj.Spec.Alerting.Labels {
-				sb.WriteString(fmt.Sprintf("          %s: %s\n", k, v))
+			labels := map[string]string{
+				"severity": bw.Severity,
+				"slo_name": sloName,
+				"service":  obj.Spec.Service,
 			}
-		}
-
-		sb.WriteString("        annotations:\n")
-		sb.WriteString(fmt.Sprintf("          summary: \"High burn rate on SLO %s\"\n", sloName))
-		sb.WriteString(fmt.Sprintf("          description: \"Error budget consumed %.1fx faster than allowed (window: %s/%s)\"\n", bw.BurnRate, longStr, shortStr))
-
-		if obj.Spec.Alerting != nil {
-			for k, v := range obj.Spec.Alerting.Annotations {
-				sb.WriteString(fmt.Sprintf("          %s: %s\n", k, v))
+			if obj.Spec.Alerting != nil {
+				for k, v := range obj.Spec.Alerting.Labels {
+					labels[k] = v
+				}
 			}
+
+			annotations := map[string]string{
+				"summary":     fmt.Sprintf("High burn rate on SLO %s", sloName),
+				"description": fmt.Sprintf("Error budget consumed %.1fx faster than allowed (window: %s/%s)", bw.BurnRate, longStr, shortStr),
+			}
+			if obj.Spec.Alerting != nil {
+				for k, v := range obj.Spec.Alerting.Annotations {
+					annotations[k] = v
+				}
+			}
+
+			alertRules = append(alertRules, monitoringv1.Rule{
+				Alert:       "SLOBurnRateHigh",
+				Expr:        intstr.FromString(expr),
+				For:         &forDuration,
+				Labels:      labels,
+				Annotations: annotations,
+			})
 		}
+		groups = append(groups, monitoringv1.RuleGroup{
+			Name:  fmt.Sprintf("slo-%s-alerts", sloName),
+			Rules: alertRules,
+		})
 	}
 
-	return sb.String(), nil
+	return monitoringv1.PrometheusRuleSpec{Groups: groups}
 }
 
 func (p *PrometheusBackend) getQueryExprs(obj *v1alpha1.ServiceLevelObjective) (errorExpr, totalExpr string) {
