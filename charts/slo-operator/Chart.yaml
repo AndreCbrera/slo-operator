@@ -1,0 +1,12 @@
+apiVersion: v2
+name: slo-operator
+description: Kubernetes operator for SLO-driven monitoring configuration
+version: 0.1.0
+appVersion: "0.1.0"
+type: application
+keywords:
+  - slo
+  - sre
+  - monitoring
+  - prometheus
+  - grafana

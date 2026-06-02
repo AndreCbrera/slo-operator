@@ -1,0 +1,40 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "slo-operator.fullname" . }}
+  labels:
+    {{- include "slo-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["slo.sre.io"]
+    resources: ["servicelevelobjectives"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["slo.sre.io"]
+    resources: ["servicelevelobjectives/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["slo.sre.io"]
+    resources: ["servicelevelobjectives/finalizers"]
+    verbs: ["update"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "slo-operator.fullname" . }}
+  labels:
+    {{- include "slo-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "slo-operator.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "slo-operator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}

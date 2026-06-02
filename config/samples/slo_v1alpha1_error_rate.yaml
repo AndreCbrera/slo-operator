@@ -1,0 +1,17 @@
+apiVersion: slo.sre.io/v1alpha1
+kind: ServiceLevelObjective
+metadata:
+  name: payments-error-rate
+  namespace: default
+spec:
+  service: payments
+  description: "Payment service error rate below 0.1%"
+  sli:
+    type: error_rate
+    raw:
+      goodEventsQuery: 'sum(rate(payment_transactions_total{status="success"}[{{.window}}]))'
+      totalEventsQuery: 'sum(rate(payment_transactions_total[{{.window}}]))'
+  target: "99.9"
+  window: "28d"
+  backends:
+    - name: prometheus

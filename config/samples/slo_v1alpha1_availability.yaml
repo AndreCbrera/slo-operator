@@ -1,0 +1,26 @@
+apiVersion: slo.sre.io/v1alpha1
+kind: ServiceLevelObjective
+metadata:
+  name: api-gateway-availability
+  namespace: default
+spec:
+  service: api-gateway
+  description: "API Gateway serves 99.9% of requests successfully"
+  sli:
+    type: availability
+    availability:
+      totalQuery: 'sum(rate(http_requests_total{service="api-gateway"}[{{.window}}]))'
+      errorQuery: 'sum(rate(http_requests_total{service="api-gateway",code=~"5.."}[{{.window}}]))'
+  target: "99.9"
+  window: "30d"
+  alerting:
+    labels:
+      team: platform
+      component: api-gateway
+    annotations:
+      runbook: "https://wiki.example.com/runbooks/api-gateway-slo"
+  backends:
+    - name: prometheus
+    - name: grafana
+      config:
+        folder: "SLOs"

@@ -1,0 +1,24 @@
+apiVersion: slo.sre.io/v1alpha1
+kind: ServiceLevelObjective
+metadata:
+  name: checkout-latency
+  namespace: default
+spec:
+  service: checkout-service
+  description: "99% of checkout requests complete within 500ms"
+  sli:
+    type: latency
+    latency:
+      totalQuery: 'sum(rate(http_request_duration_seconds_count{service="checkout"}[{{.window}}]))'
+      successQuery: 'sum(rate(http_request_duration_seconds_bucket{service="checkout",le="0.5"}[{{.window}}]))'
+      thresholdMs: 500
+  target: "99.0"
+  window: "7d"
+  alerting:
+    labels:
+      team: checkout
+    annotations:
+      runbook: "https://wiki.example.com/runbooks/checkout-latency"
+  backends:
+    - name: prometheus
+    - name: grafana
