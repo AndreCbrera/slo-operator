@@ -1,4 +1,4 @@
-module github.com/acabrera02/slo-operator/hack/traffic-gen
+module github.com/AndreCbrera/slo-operator/hack/traffic-gen
 
 go 1.26
 

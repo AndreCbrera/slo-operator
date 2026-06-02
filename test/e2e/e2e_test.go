@@ -30,7 +30,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/acabrera02/slo-operator/test/utils"
+	"github.com/AndreCbrera/slo-operator/test/utils"
 )
 
 // namespace where the project is deployed in

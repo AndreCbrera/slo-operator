@@ -37,11 +37,12 @@ import (
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
-	slov1alpha1 "github.com/acabrera02/slo-operator/api/v1alpha1"
-	"github.com/acabrera02/slo-operator/internal/backend"
-	"github.com/acabrera02/slo-operator/internal/backend/grafana"
-	"github.com/acabrera02/slo-operator/internal/backend/prometheus"
-	"github.com/acabrera02/slo-operator/internal/controller"
+	slov1alpha1 "github.com/AndreCbrera/slo-operator/api/v1alpha1"
+	"github.com/AndreCbrera/slo-operator/internal/backend"
+	"github.com/AndreCbrera/slo-operator/internal/backend/datadog"
+	"github.com/AndreCbrera/slo-operator/internal/backend/grafana"
+	"github.com/AndreCbrera/slo-operator/internal/backend/prometheus"
+	"github.com/AndreCbrera/slo-operator/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -187,6 +188,7 @@ func main() {
 	registry := backend.NewRegistry()
 	registry.Register(prometheus.New(mgr.GetClient()), slov1alpha1.BackendPrometheus)
 	registry.Register(grafana.New(mgr.GetClient()), slov1alpha1.BackendGrafana)
+	registry.Register(datadog.New(mgr.GetClient()), slov1alpha1.BackendDatadog)
 
 	if err := (&controller.ServiceLevelObjectiveReconciler{
 		Client:   mgr.GetClient(),

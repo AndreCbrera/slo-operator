@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	v1alpha1 "github.com/acabrera02/slo-operator/api/v1alpha1"
-	"github.com/acabrera02/slo-operator/internal/backend"
-	"github.com/acabrera02/slo-operator/internal/slo"
+	v1alpha1 "github.com/AndreCbrera/slo-operator/api/v1alpha1"
+	"github.com/AndreCbrera/slo-operator/internal/backend"
+	"github.com/AndreCbrera/slo-operator/internal/slo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"

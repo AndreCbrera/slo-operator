@@ -1,4 +1,4 @@
-module github.com/acabrera02/slo-operator
+module github.com/AndreCbrera/slo-operator
 
 go 1.25.7
 

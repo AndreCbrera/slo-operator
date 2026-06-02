@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	v1alpha1 "github.com/acabrera02/slo-operator/api/v1alpha1"
+	v1alpha1 "github.com/AndreCbrera/slo-operator/api/v1alpha1"
 )
 
 func MaxErrorRate(target float64) float64 {

@@ -33,7 +33,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	slov1alpha1 "github.com/acabrera02/slo-operator/api/v1alpha1"
+	slov1alpha1 "github.com/AndreCbrera/slo-operator/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 

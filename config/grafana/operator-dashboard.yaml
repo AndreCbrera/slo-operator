@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: slo-operator-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  slo-operator.json: |
+    {
+      "title": "SLO Operator",
+      "uid": "slo-operator-health",
+      "schemaVersion": 39,
+      "editable": false,
+      "tags": ["operator", "slo", "health"],
+      "time": {"from": "now-1h", "to": "now"},
+      "refresh": "30s",
+      "panels": [
+        {
+          "title": "Managed SLOs",
+          "type": "stat",
+          "id": 1,
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+          "targets": [
+            {"expr": "slo_operator_managed_slos", "legendFormat": "SLOs"}
+          ],
+          "fieldConfig": {
+            "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}]}}
+          }
+        },
+        {
+          "title": "Reconcile Rate",
+          "type": "stat",
+          "id": 2,
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "targets": [
+            {"expr": "sum(rate(slo_operator_reconcile_duration_seconds_count[5m]))", "legendFormat": "reconciles/sec"}
+          ],
+          "fieldConfig": {
+            "defaults": {"unit": "ops", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}]}}
+          }
+        },
+        {
+          "title": "Reconcile Errors",
+          "type": "stat",
+          "id": 3,
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "targets": [
+            {"expr": "sum(rate(slo_operator_reconcile_errors_total[5m]))", "legendFormat": "errors/sec"}
+          ],
+          "fieldConfig": {
+            "defaults": {"unit": "ops", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "red", "value": 0.01}]}}
+          }
+        },
+        {
+          "title": "Active SLO Alerts",
+          "type": "stat",
+          "id": 4,
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "targets": [
+            {"expr": "count(ALERTS{alertname=\"SLOBurnRateHigh\", alertstate=\"firing\"}) or vector(0)", "legendFormat": "firing"}
+          ],
+          "fieldConfig": {
+            "defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}, {"color": "red", "value": 3}]}}
+          }
+        },
+        {
+          "title": "Reconcile Duration (p99)",
+          "type": "timeseries",
+          "id": 5,
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "targets": [
+            {"expr": "histogram_quantile(0.99, sum(rate(slo_operator_reconcile_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p99"},
+            {"expr": "histogram_quantile(0.50, sum(rate(slo_operator_reconcile_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p50"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}}
+        },
+        {
+          "title": "Reconcile Errors by Backend",
+          "type": "timeseries",
+          "id": 6,
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "targets": [
+            {"expr": "sum(rate(slo_operator_reconcile_errors_total[5m])) by (backend)", "legendFormat": "{{backend}}"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops", "custom": {"fillOpacity": 20}}}
+        },
+        {
+          "title": "SLO Error Ratios (all SLOs)",
+          "type": "timeseries",
+          "id": 7,
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
+          "targets": [
+            {"expr": "slo:error_ratio:rate5m", "legendFormat": "{{slo_name}}"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "percentunit", "custom": {"fillOpacity": 10}}}
+        },
+        {
+          "title": "Burn Rates (1h window)",
+          "type": "timeseries",
+          "id": 8,
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
+          "targets": [
+            {"expr": "slo:error_ratio:rate1h / on(slo_name) group_left() (slo:error_ratio:rate1h * 0 + 0.001)", "legendFormat": "{{slo_name}}"}
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "orange", "value": 3}, {"color": "red", "value": 6}]},
+              "custom": {"fillOpacity": 10}
+            }
+          }
+        }
+      ]
+    }

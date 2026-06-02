@@ -27,7 +27,8 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	slov1alpha1 "github.com/acabrera02/slo-operator/api/v1alpha1"
+	slov1alpha1 "github.com/AndreCbrera/slo-operator/api/v1alpha1"
+	"github.com/AndreCbrera/slo-operator/internal/backend"
 )
 
 var _ = Describe("ServiceLevelObjective Controller", func() {
@@ -51,7 +52,21 @@ var _ = Describe("ServiceLevelObjective Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: slov1alpha1.ServiceLevelObjectiveSpec{
+						Service: "test-service",
+						SLI: slov1alpha1.SLISpec{
+							Type: slov1alpha1.SLITypeAvailability,
+							Availability: &slov1alpha1.AvailabilitySLI{
+								TotalQuery: `sum(rate(http_requests_total[{{.window}}]))`,
+								ErrorQuery: `sum(rate(http_requests_total{code=~"5.."}[{{.window}}]))`,
+							},
+						},
+						Target:  "99.9",
+						Window:  slov1alpha1.Window30d,
+						Backends: []slov1alpha1.BackendRef{
+							{Name: slov1alpha1.BackendPrometheus},
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
@@ -69,8 +84,9 @@ var _ = Describe("ServiceLevelObjective Controller", func() {
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &ServiceLevelObjectiveReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Registry: backend.NewRegistry(),
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{

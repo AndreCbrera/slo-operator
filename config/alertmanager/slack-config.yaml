@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-slack-webhook
+  namespace: monitoring
+type: Opaque
+stringData:
+  url: "https://hooks.slack.com/services/REPLACE/WITH/YOUR-WEBHOOK"
+---
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: slo-alerts
+  namespace: default
+  labels:
+    alertmanagerConfig: slo
+spec:
+  route:
+    receiver: slack-slo
+    matchers:
+      - name: slo_name
+        matchType: "=~"
+        value: ".+"
+    groupBy: ["slo_name", "severity"]
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 4h
+  receivers:
+    - name: slack-slo
+      slackConfigs:
+        - apiURL:
+            name: alertmanager-slack-webhook
+            key: url
+          channel: "#slo-alerts"
+          sendResolved: true
+          title: '{{ if eq .Status "firing" }}🔥{{ else }}✅{{ end }} SLO Alert: {{ .CommonLabels.slo_name }}'
+          text: |
+            *Service:* {{ .CommonLabels.service }}
+            *Severity:* {{ .CommonLabels.severity }}
+            *SLO:* {{ .CommonLabels.slo_name }}
+            {{ range .Alerts }}
+            • {{ .Annotations.description }}
+            {{ end }}

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	v1alpha1 "github.com/acabrera02/slo-operator/api/v1alpha1"
+	v1alpha1 "github.com/AndreCbrera/slo-operator/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 

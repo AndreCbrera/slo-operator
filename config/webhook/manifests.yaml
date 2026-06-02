@@ -1,0 +1,57 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: slo-operator-selfsigned
+  namespace: slo-system
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: slo-operator-webhook-cert
+  namespace: slo-system
+spec:
+  secretName: slo-operator-webhook-tls
+  dnsNames:
+    - slo-operator-webhook.slo-system.svc
+    - slo-operator-webhook.slo-system.svc.cluster.local
+  issuerRef:
+    name: slo-operator-selfsigned
+    kind: Issuer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: slo-operator-webhook
+  namespace: slo-system
+spec:
+  selector:
+    app.kubernetes.io/name: slo-operator
+    app.kubernetes.io/instance: slo-operator
+  ports:
+    - port: 443
+      targetPort: 9443
+      name: webhook
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: slo-operator-validating
+  annotations:
+    cert-manager.io/inject-ca-from: slo-system/slo-operator-webhook-cert
+webhooks:
+  - name: validate-slo.slo.sre.io
+    clientConfig:
+      service:
+        name: slo-operator-webhook
+        namespace: slo-system
+        path: /validate-slo-sre-io-v1alpha1-servicelevelobjective
+    rules:
+      - operations: ["CREATE", "UPDATE"]
+        apiGroups: ["slo.sre.io"]
+        apiVersions: ["v1alpha1"]
+        resources: ["servicelevelobjectives"]
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
